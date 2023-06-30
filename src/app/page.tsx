@@ -1,95 +1,89 @@
-import Image from 'next/image'
-import styles from './page.module.css'
+"use client"
 
-export default function Home() {
-  return (
-    <main className={styles.main}>
-      <div className={styles.description}>
-        <p>
-          Get started by editing&nbsp;
-          <code className={styles.code}>src/app/page.tsx</code>
-        </p>
-        <div>
-          <a
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{' '}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className={styles.vercelLogo}
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
-        </div>
+import { useIntersection } from "@mantine/hooks"
+import { User } from "@prisma/client"
+import { QueryClient, QueryClientProvider, useInfiniteQuery } from "@tanstack/react-query"
+import React, { useEffect, useRef } from "react"
+
+function Projects() {
+  const fetchProjects = async ({ pageParam = 1 }) => {
+    const res = await fetch('/api/user?cursor=' + pageParam)
+    return res.json()
+  }
+
+  const {
+    data,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetching,
+    isFetchingNextPage,
+    status,
+  } = useInfiniteQuery({
+    queryKey: ['projects'],
+    queryFn: fetchProjects,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+  })
+
+  const containerRef = useRef();
+  const { ref, entry } = useIntersection({
+    root: containerRef.current,
+    threshold: 1,
+  });
+
+  useEffect(() => {
+    if (entry && entry.isIntersecting && hasNextPage) {
+      console.log("entry: ", entry)
+      fetchNextPage();
+    }
+  }, [entry, fetchNextPage, hasNextPage])
+
+  const users = data?.pages.flatMap(page => page.users) ?? []
+
+  if (users.length === 0) return <p>No users</p>
+
+  console.log("data: ", data)
+
+  return status === 'loading' ? (
+    <p>Loading...</p>
+  ) : status === 'error' ? (
+    <p>Error: {error as string}</p>
+  ) : (
+    <div ref={ref}>
+      {users.map((user: User, idx: number) => {
+        idx++;
+        if (users.length === idx) {
+          return <div ref={ref} key={user.id}>{idx} - {user.first_name}</div>
+        }
+        return (
+          <p key={user.id}>{idx} - {user.first_name}</p>
+        )
+      })}
+      <div>
+        <button
+          onClick={() => fetchNextPage()}
+          disabled={!hasNextPage || isFetchingNextPage}
+        >
+          {isFetchingNextPage
+            ? 'Loading more...'
+            : hasNextPage
+              ? 'Load More'
+              : 'Nothing more to load'}
+        </button>
       </div>
-
-      <div className={styles.center}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
-
-      <div className={styles.grid}>
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>
-            Docs <span>-&gt;</span>
-          </h2>
-          <p>Find in-depth information about Next.js features and API.</p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>
-            Learn <span>-&gt;</span>
-          </h2>
-          <p>Learn about Next.js in an interactive course with&nbsp;quizzes!</p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>
-            Templates <span>-&gt;</span>
-          </h2>
-          <p>Explore the Next.js 13 playground.</p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>
-            Deploy <span>-&gt;</span>
-          </h2>
-          <p>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
+      <div>{isFetching && !isFetchingNextPage ? 'Fetching...' : null}</div>
+    </div>
   )
 }
+
+export default function Home() {
+
+  const queryClient = new QueryClient()
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <Projects />
+    </QueryClientProvider>
+  )
+}
+
